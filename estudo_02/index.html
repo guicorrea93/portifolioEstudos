@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arvores de Regressao - Precificacao de Entregas | Guilherme Correa</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    :root {
+      --bg: #111827;
+      --surface: #1F2937;
+      --text: #E5E7EB;
+      --text-2: #CBD5E1;
+      --muted: #94A3B8;
+      --accent: #F28C28;
+      --success: #1B7F5C;
+      --accent-soft: #F7BA7E;
+      --success-soft: #8DBFAE;
+      --radius: 16px;
+      --border: rgba(148, 163, 184, 0.22);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; }
+
+    /* Topbar */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(17,24,39,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.875rem; font-weight: 600; transition: var(--transition); }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; }
+    .topbar .logo span { color: var(--accent); }
+
+    /* Hero */
+    .hero { padding: 8rem 2rem 4rem; text-align: center; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -50%; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; background: radial-gradient(circle, rgba(242,140,40,0.08) 0%, transparent 70%); pointer-events: none; }
+    .hero .badge { display: inline-block; background: rgba(27,127,92,0.15); color: var(--success-soft); padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 1.5rem; border: 1px solid rgba(27,127,92,0.3); }
+    .hero h1 { font-size: clamp(2rem, 5vw + 1rem, 3.25rem); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 1rem; color: rgba(255,255,255,0.95); }
+    .hero h1 span { color: var(--accent); }
+    .hero .lead { font-size: clamp(0.95rem, 1.5vw + 0.25rem, 1.15rem); color: var(--text-2); max-width: 700px; margin: 0 auto 2rem; }
+    .hero-tags { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+    .hero-tags span { background: var(--surface); color: var(--muted); padding: 0.35rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); }
+
+    /* Layout */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+    section { padding: 4rem 0; }
+    .section-label { display: inline-block; color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.75rem; }
+    .section-title { font-size: clamp(1.5rem, 3vw + 0.5rem, 2rem); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 1.5rem; color: rgba(255,255,255,0.95); }
+    .section-desc { color: var(--text-2); max-width: 700px; margin-bottom: 2.5rem; font-size: 0.95rem; }
+    .sub-title { font-size: 1.05rem; font-weight: 700; margin: 2.5rem 0 1rem; color: var(--text); }
+    .sub-desc { color: var(--muted); font-size: 0.85rem; margin: -0.5rem 0 1.25rem; }
+    .divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 3rem 0; }
+
+    /* Cards & Grids */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.75rem; transition: var(--transition); }
+    .card:hover { border-color: rgba(242,140,40,0.3); box-shadow: 0 10px 40px rgba(242,140,40,0.08); }
+    .card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--text); }
+    .card p { color: var(--text-2); font-size: 0.9rem; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; }
+
+    /* Pipeline */
+    .pipeline { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 3rem; }
+    .step { flex: 1; min-width: 150px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; transition: var(--transition); }
+    .step:hover { border-color: rgba(242,140,40,0.3); transform: translateY(-2px); }
+    .step-number { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-soft)); color: var(--bg); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; margin-bottom: 1rem; }
+    .step h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text); }
+    .step p { color: var(--muted); font-size: 0.82rem; }
+
+    /* Metrics */
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; margin: 2rem 0; }
+    .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center; transition: var(--transition); }
+    .metric:hover { border-color: rgba(27,127,92,0.4); box-shadow: 0 10px 40px rgba(27,127,92,0.1); }
+    .metric .value { font-size: 2rem; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
+    .metric .label { font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
+
+    /* Tables */
+    .table-wrapper { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); margin: 1.5rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid var(--border); }
+    th { background: rgba(242,140,40,0.08); color: var(--accent); font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+    td { color: var(--text-2); background: var(--surface); }
+    td.highlight { color: var(--accent); font-weight: 700; }
+    td.left { text-align: left; } th.left { text-align: left; }
+    td.positive { color: var(--success-soft); font-weight: 700; }
+    td.negative { color: #EF4444; font-weight: 700; }
+    td.best { background: rgba(27,127,92,0.12); color: var(--success-soft); font-weight: 700; }
+
+    /* Analysis note boxes */
+    .analysis-note { background: rgba(139,92,246,0.06); border-left: 3px solid #8B5CF6; border-radius: 0 var(--radius) var(--radius) 0; padding: 1rem 1.5rem; margin: 1.5rem 0; font-size: 0.88rem; color: var(--text-2); }
+    .analysis-note strong { color: #A78BFA; }
+
+    /* Tech */
+    .tech-stack { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1.5rem 0; }
+    .tech-badge { background: rgba(242,140,40,0.1); color: var(--accent-soft); border: 1px solid rgba(242,140,40,0.25); padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .tech-badge.green { background: rgba(27,127,92,0.12); color: var(--success-soft); border-color: rgba(27,127,92,0.3); }
+
+    /* Charts */
+    .chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin: 1.5rem 0; position: relative; }
+    .chart-container canvas { max-height: 400px; }
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0; }
+    .chart-row .chart-container { margin: 0; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 2.5rem; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+    .tab { padding: 0.75rem 1.5rem; font-size: 0.9rem; font-weight: 700; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: var(--transition); font-family: inherit; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; } .tab-content.active { display: block; }
+
+    /* Param cards */
+    .param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .param-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; transition: var(--transition); }
+    .param-card:hover { border-color: rgba(242,140,40,0.3); }
+    .param-card .param-name { font-size: 0.78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .param-card .param-value { font-size: 1.5rem; font-weight: 800; color: var(--accent); margin-top: 0.25rem; }
+    .param-card .param-desc { font-size: 0.82rem; color: var(--text-2); margin-top: 0.35rem; }
+
+    /* Footer */
+    footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.82rem; }
+    footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    footer a:hover { color: var(--accent-soft); }
+
+    @media (max-width: 768px) {
+      .topbar { padding: 0.75rem 1rem; } .hero { padding: 6rem 1rem 3rem; } .container { padding: 0 1rem; }
+      .pipeline { flex-direction: column; } .tabs { overflow-x: auto; }
+      .tab { white-space: nowrap; font-size: 0.82rem; padding: 0.6rem 1rem; }
+      .chart-row { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; }
+      .param-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="topbar">
+    <a href="https://guicorrea93.github.io/" class="logo">gui<span>.</span>correa</a>
+    <a href="https://guicorrea93.github.io/">Voltar ao Portfolio</a>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="badge">Estudo Alura</div>
+    <h1>Arvores de Regressao<br><span>Precificacao de Entregas</span></h1>
+    <p class="lead">
+      Construcao de modelos de regressao com Decision Tree e Random Forest
+      para precificar o custo de entrega de esculturas artisticas — do overfitting
+      a otimizacao com GridSearchCV e validacao cruzada.
+    </p>
+    <div class="hero-tags">
+      <span>Python</span><span>Pandas</span><span>Scikit-learn</span><span>Decision Tree</span>
+      <span>Random Forest</span><span>GridSearchCV</span><span>Machine Learning</span>
+    </div>
+  </header>
+
+  <!-- Pipeline -->
+  <section>
+    <div class="container">
+      <span class="section-label">Metodologia</span>
+      <h2 class="section-title">Pipeline do Projeto</h2>
+      <div class="pipeline">
+        <div class="step"><div class="step-number">1</div><h4>Coleta</h4><p>Leitura do dataset de entregas via GitHub</p></div>
+        <div class="step"><div class="step-number">2</div><h4>Pre-processamento</h4><p>Datas, one-hot encoding e limpeza</p></div>
+        <div class="step"><div class="step-number">3</div><h4>Arvore Base</h4><p>Decision Tree sem restricoes (overfitting)</p></div>
+        <div class="step"><div class="step-number">4</div><h4>Otimizacao</h4><p>GridSearchCV para hiperparametros ideais</p></div>
+        <div class="step"><div class="step-number">5</div><h4>Random Forest</h4><p>Ensemble com 100 arvores + OOB</p></div>
+        <div class="step"><div class="step-number">6</div><h4>Predicao</h4><p>Precificacao de 1.434 novas entregas</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Techniques -->
+  <section>
+    <div class="container">
+      <span class="section-label">Tecnicas Utilizadas</span>
+      <h2 class="section-title">Fundamentos e Ferramentas</h2>
+      <div class="grid-3">
+        <div class="card"><h3>Feature Engineering</h3><p>Extracao de dia, mes e ano de datas. Calculo de diferenca entre data agendada e entrega.</p></div>
+        <div class="card"><h3>One-Hot Encoding</h3><p>Conversao de 8 variaveis categoricas em dummies com drop_first=True para evitar multicolinearidade.</p></div>
+        <div class="card"><h3>Decision Tree</h3><p>Arvore de regressao com criterio MSE. Visualizacao do overfitting e regularizacao.</p></div>
+        <div class="card"><h3>Random Forest</h3><p>Ensemble bagging com 100 arvores independentes. Reducao de variancia e avaliacao OOB.</p></div>
+        <div class="card"><h3>GridSearchCV</h3><p>Busca exaustiva de hiperparametros (max_depth, min_samples_leaf, etc.) com cross-validation.</p></div>
+        <div class="card"><h3>Cross-Validation</h3><p>KFold com 3 splits para estimar performance real e detectar overfitting.</p></div>
+      </div>
+      <div style="margin-top: 3rem;">
+        <span class="section-label">Stack</span>
+        <h2 class="section-title">Tecnologias e Bibliotecas</h2>
+        <div class="tech-stack">
+          <span class="tech-badge">Python 3</span><span class="tech-badge green">Pandas</span>
+          <span class="tech-badge green">NumPy</span><span class="tech-badge">Scikit-learn</span>
+          <span class="tech-badge green">Matplotlib</span><span class="tech-badge green">Seaborn</span>
+          <span class="tech-badge">Jupyter Notebook</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dataset Overview -->
+  <section>
+    <div class="container">
+      <span class="section-label">Dataset</span>
+      <h2 class="section-title">Conhecendo os Dados</h2>
+      <p class="section-desc">Dataset de entregas de esculturas artisticas com 4.462 registros e 19 colunas originais. Apos feature engineering e one-hot encoding, o dataset final possui 30 features.</p>
+
+      <div class="metrics">
+        <div class="metric"><div class="value">4.462</div><div class="label">Registros</div></div>
+        <div class="metric"><div class="value">19</div><div class="label">Colunas Originais</div></div>
+        <div class="metric"><div class="value">30</div><div class="label">Features Finais</div></div>
+        <div class="metric"><div class="value">80/20</div><div class="label">Split Treino/Teste</div></div>
+      </div>
+
+      <h3 class="sub-title">Dicionario de Dados</h3>
+      <p class="sub-desc">Variaveis originais do dataset antes do pre-processamento.</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th class="left">Variavel</th><th class="left">Tipo</th><th class="left">Descricao</th></tr></thead>
+          <tbody>
+            <tr><td class="left">reputacao_artista</td><td class="left">Numerica</td><td class="left">Reputacao do artista no mercado (0.0 a 1.0)</td></tr>
+            <tr><td class="left">altura</td><td class="left">Numerica</td><td class="left">Altura da escultura em metros</td></tr>
+            <tr><td class="left">largura</td><td class="left">Numerica</td><td class="left">Largura da escultura em metros</td></tr>
+            <tr><td class="left">peso</td><td class="left">Numerica</td><td class="left">Peso da escultura em quilos</td></tr>
+            <tr><td class="left">preco_escultura</td><td class="left">Numerica</td><td class="left highlight">Preco da escultura (feature mais importante)</td></tr>
+            <tr><td class="left">preco_base_envio</td><td class="left">Numerica</td><td class="left">Preco base para envio</td></tr>
+            <tr><td class="left">material</td><td class="left">Categorica</td><td class="left">8 tipos: Latao, Argila, Aluminio, Madeira, Bronze, Pedra, Marmore, N/E</td></tr>
+            <tr><td class="left">transporte</td><td class="left">Categorica</td><td class="left">4 tipos: Aereo, Rodoviario, Aquaviario, N/E</td></tr>
+            <tr><td class="left">internacional</td><td class="left">Binaria</td><td class="left">Se o envio e internacional</td></tr>
+            <tr><td class="left">envio_expresso</td><td class="left">Binaria</td><td class="left">Se o envio foi no modo expresso</td></tr>
+            <tr><td class="left">instalacao_incluida</td><td class="left">Binaria</td><td class="left">Se a instalacao esta incluida</td></tr>
+            <tr><td class="left">fragil</td><td class="left">Binaria</td><td class="left">Se o pedido e fragil</td></tr>
+            <tr><td class="left">custo</td><td class="left highlight">Alvo</td><td class="left highlight">Custo do envio do pedido (variavel alvo)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- R2 Overview -->
+  <section>
+    <div class="container">
+      <span class="section-label">Visao Geral</span>
+      <h2 class="section-title">Evolucao dos Modelos - R² e RMSE</h2>
+      <p class="section-desc">Comparacao da performance dos 4 modelos construidos. A progressao mostra a reducao do overfitting e melhoria da generalizacao.</p>
+      <div class="chart-row">
+        <div class="chart-container">
+          <canvas id="chartR2Compare"></canvas>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartRMSECompare"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="container"><div class="divider"></div></div>
+
+  <!-- ===================== TABBED RESULTS ===================== -->
+  <section>
+    <div class="container">
+      <span class="section-label">Estudo Completo</span>
+      <h2 class="section-title">Analise Detalhada por Modelo</h2>
+
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('tab1', this)">Arvore Base</button>
+        <button class="tab" onclick="switchTab('tab2', this)">Arvore Otimizada</button>
+        <button class="tab" onclick="switchTab('tab3', this)">Random Forest</button>
+        <button class="tab" onclick="switchTab('tab4', this)">RF Otimizada</button>
+      </div>
+
+      <!-- ==================== TAB 1: Arvore Base ==================== -->
+      <div id="tab1" class="tab-content active">
+        <p class="section-desc">
+          Arvore de Decisao sem restricoes de hiperparametros. O modelo memoriza os dados de treino
+          e nao consegue generalizar para dados novos — overfitting classico.
+        </p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">1.000</div><div class="label">R² Treino</div></div>
+          <div class="metric"><div class="value">0.661</div><div class="label">R² Teste</div></div>
+          <div class="metric"><div class="value">0.00</div><div class="label">RMSE Treino</div></div>
+          <div class="metric"><div class="value">1544.65</div><div class="label">RMSE Teste</div></div>
+        </div>
+
+        <h3 class="sub-title">Estrutura da Arvore</h3>
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">Nos</div><div class="param-value">7.135</div><div class="param-desc">Numero total de nos na arvore</div></div>
+          <div class="param-card"><div class="param-name">Folhas</div><div class="param-value">3.568</div><div class="param-desc">Nos terminais (predicoes)</div></div>
+          <div class="param-card"><div class="param-name">Profundidade</div><div class="param-value">30</div><div class="param-desc">Profundidade maxima da arvore</div></div>
+          <div class="param-card"><div class="param-name">Amostras Treino</div><div class="param-value">3.569</div><div class="param-desc">80% do dataset original</div></div>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Diagnostico:</strong> R² = 1.0 no treino com 7.135 nos e 3.568 folhas significa que a arvore criou praticamente uma folha por amostra. O gap de <strong>0.339</strong> entre treino (1.0) e teste (0.661) confirma overfitting severo.
+        </div>
+
+        <h3 class="sub-title">Importancia das Features</h3>
+        <p class="sub-desc">Ranking das variaveis mais relevantes para as decisoes da arvore.</p>
+        <div class="chart-container">
+          <canvas id="chartFeatureImp"></canvas>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Destaque:</strong> As 3 features mais importantes (<strong>preco_escultura</strong>, <strong>reputacao_artista</strong> e <strong>preco_base_envio</strong>) representam juntas <strong>83%</strong> da importancia total, indicando que o custo de entrega e fortemente determinado pelo valor da peca e pela reputacao do artista.
+        </div>
+      </div>
+
+      <!-- ==================== TAB 2: Arvore Otimizada ==================== -->
+      <div id="tab2" class="tab-content">
+        <p class="section-desc">
+          Arvore de Decisao com hiperparametros otimizados via GridSearchCV.
+          Restricoes de profundidade e tamanho minimo de folha controlam o overfitting.
+        </p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">0.871</div><div class="label">R² Treino</div></div>
+          <div class="metric"><div class="value">0.754</div><div class="label">R² Teste</div></div>
+          <div class="metric"><div class="value">980.42</div><div class="label">RMSE Treino</div></div>
+          <div class="metric"><div class="value">1315.20</div><div class="label">RMSE Teste</div></div>
+        </div>
+
+        <h3 class="sub-title">Melhores Hiperparametros (GridSearchCV)</h3>
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">max_depth</div><div class="param-value">10</div><div class="param-desc">Profundidade maxima da arvore</div></div>
+          <div class="param-card"><div class="param-name">min_samples_leaf</div><div class="param-value">10</div><div class="param-desc">Minimo de amostras por folha</div></div>
+          <div class="param-card"><div class="param-name">min_samples_split</div><div class="param-value">2</div><div class="param-desc">Minimo de amostras para dividir</div></div>
+          <div class="param-card"><div class="param-name">max_leaf_nodes</div><div class="param-value">None</div><div class="param-desc">Sem limite de folhas</div></div>
+        </div>
+
+        <h3 class="sub-title">Validacao Cruzada (3-Fold)</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Metrica</th><th>Fold 1</th><th>Fold 2</th><th>Fold 3</th><th>Media</th></tr></thead>
+            <tbody>
+              <tr><td class="left">RMSE Treino</td><td>1061.34</td><td>985.34</td><td>1023.83</td><td class="highlight">1023.50</td></tr>
+              <tr><td class="left">RMSE Teste</td><td>1359.22</td><td>1469.19</td><td>1424.79</td><td class="highlight">1417.74</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Melhoria:</strong> O gap entre treino e teste caiu de <strong>0.339</strong> (base) para <strong>0.117</strong> (otimizada). O RMSE de teste melhorou de 1544 para 1315 (-15%), e a cross-validation confirma estabilidade nos 3 folds.
+        </div>
+      </div>
+
+      <!-- ==================== TAB 3: Random Forest Base ==================== -->
+      <div id="tab3" class="tab-content">
+        <p class="section-desc">
+          Ensemble de 100 arvores de decisao independentes (bagging). Cada arvore ve uma amostra
+          bootstrap diferente, e a predicao final e a media. OOB score valida sem conjunto de teste separado.
+        </p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">0.977</div><div class="label">R² Treino</div></div>
+          <div class="metric"><div class="value">0.825</div><div class="label">R² Teste</div></div>
+          <div class="metric"><div class="value">411.21</div><div class="label">RMSE Treino</div></div>
+          <div class="metric"><div class="value">1108.02</div><div class="label">RMSE Teste</div></div>
+        </div>
+
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">n_estimators</div><div class="param-value">100</div><div class="param-desc">Numero de arvores no ensemble</div></div>
+          <div class="param-card"><div class="param-name">OOB Score</div><div class="param-value">0.828</div><div class="param-desc">R² Out-of-Bag (validacao interna)</div></div>
+          <div class="param-card"><div class="param-name">CV RMSE Treino</div><div class="param-value">426.81</div><div class="param-desc">Media do RMSE treino (3-fold)</div></div>
+          <div class="param-card"><div class="param-name">CV RMSE Teste</div><div class="param-value">1148.56</div><div class="param-desc">Media do RMSE teste (3-fold)</div></div>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Salto de qualidade:</strong> A Random Forest melhorou o R² de teste de <strong>0.754</strong> (arvore otimizada) para <strong>0.825</strong> (+9.4%). O RMSE de teste caiu de 1315 para 1108 (-15.7%). O OOB score (0.828) confirma boa generalizacao.
+        </div>
+      </div>
+
+      <!-- ==================== TAB 4: Random Forest Otimizada ==================== -->
+      <div id="tab4" class="tab-content">
+        <p class="section-desc">
+          Random Forest com hiperparametros ajustados via GridSearchCV.
+          Modelo final utilizado para precificar 1.434 novas entregas.
+        </p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">0.966</div><div class="label">R² Treino</div></div>
+          <div class="metric"><div class="value">0.826</div><div class="label">R² Teste</div></div>
+          <div class="metric"><div class="value">500.47</div><div class="label">RMSE Treino</div></div>
+          <div class="metric"><div class="value">1106.16</div><div class="label">RMSE Teste</div></div>
+        </div>
+
+        <h3 class="sub-title">Melhores Hiperparametros (GridSearchCV)</h3>
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">max_depth</div><div class="param-value">None</div><div class="param-desc">Sem limite de profundidade</div></div>
+          <div class="param-card"><div class="param-name">max_leaf_nodes</div><div class="param-value">550</div><div class="param-desc">Maximo de nos folha por arvore</div></div>
+          <div class="param-card"><div class="param-name">min_samples_leaf</div><div class="param-value">2</div><div class="param-desc">Minimo de amostras por folha</div></div>
+          <div class="param-card"><div class="param-name">min_samples_split</div><div class="param-value">2</div><div class="param-desc">Minimo de amostras para dividir</div></div>
+        </div>
+
+        <h3 class="sub-title">Validacao Cruzada (3-Fold)</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Metrica</th><th>Media</th><th>Comparacao com RF Base</th></tr></thead>
+            <tbody>
+              <tr><td class="left">RMSE Treino</td><td class="highlight">527.50</td><td class="positive">+100.69 (mais conservador)</td></tr>
+              <tr><td class="left">RMSE Teste</td><td class="highlight">1143.54</td><td class="positive">-5.02 (leve melhoria)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Modelo Final:</strong> A otimizacao reduziu levemente o gap treino/teste (de 0.152 para 0.140), com RMSE de teste estavel em ~1106. Este modelo foi utilizado para precificar <strong>1.434 novas entregas</strong> no dataset de teste.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="container"><div class="divider"></div></div>
+
+  <!-- Comparison Table -->
+  <section>
+    <div class="container">
+      <span class="section-label">Comparacao</span>
+      <h2 class="section-title">Resumo de Performance dos Modelos</h2>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th class="left">Modelo</th><th>R² Treino</th><th>R² Teste</th><th>RMSE Treino</th><th>RMSE Teste</th><th>Gap R²</th></tr></thead>
+          <tbody>
+            <tr><td class="left">Arvore (base)</td><td class="negative">1.000</td><td>0.661</td><td class="negative">0.00</td><td>1544.65</td><td class="negative">0.339</td></tr>
+            <tr><td class="left">Arvore (otimizada)</td><td>0.871</td><td>0.754</td><td>980.42</td><td>1315.20</td><td>0.117</td></tr>
+            <tr><td class="left">Random Forest (base)</td><td>0.977</td><td>0.825</td><td>411.21</td><td>1108.02</td><td>0.152</td></tr>
+            <tr><td class="left best">Random Forest (otimizada)</td><td class="best">0.966</td><td class="best">0.826</td><td class="best">500.47</td><td class="best">1106.16</td><td class="best">0.140</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Insights -->
+  <section>
+    <div class="container">
+      <span class="section-label">Insights</span>
+      <h2 class="section-title">Principais Aprendizados</h2>
+      <div class="grid-2">
+        <div class="card"><h3>Overfitting e Real</h3><p>Uma arvore sem restricoes atinge R² = 1.0 no treino, mas apenas 0.66 no teste. Memorizar nao e aprender — regularizacao via max_depth e min_samples e essencial.</p></div>
+        <div class="card"><h3>Ensemble Reduz Variancia</h3><p>Random Forest com 100 arvores melhorou o R² de teste de 0.75 para 0.83. Combinar multiplos modelos fracos cria um modelo forte e estavel.</p></div>
+        <div class="card"><h3>Features Dominantes</h3><p>Preco da escultura (38.5%) e reputacao do artista (29.6%) juntos explicam 68% da predicao. O custo de entrega esta intrinsecamente ligado ao valor da peca.</p></div>
+        <div class="card"><h3>GridSearchCV Sistematiza</h3><p>Busca exaustiva de hiperparametros com cross-validation encontra combinacoes otimas que seria impossivel testar manualmente. Essencial para producao.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Estudo realizado no curso <strong>Data Science: Regressao com Arvores</strong> da Alura</p>
+    <p style="margin-top:0.5rem;"><a href="https://guicorrea93.github.io/">Voltar ao Portfolio</a></p>
+  </footer>
+
+  <script>
+    /* ===== UTILITIES ===== */
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    const COLORS = {
+      accent: '#F28C28', accentSoft: '#F7BA7E',
+      success: '#1B7F5C', successSoft: '#8DBFAE',
+      red: '#EF4444', redSoft: '#F87171',
+      purple: '#8B5CF6', purpleSoft: '#A78BFA',
+      muted: '#94A3B8', text2: '#CBD5E1',
+      border: 'rgba(148,163,184,0.22)', surface: '#1F2937'
+    };
+
+    const CHART_DEFAULTS = {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: COLORS.text2, font: { size: 12, weight: 600 } } }
+      },
+      scales: {
+        x: { ticks: { color: COLORS.muted, font: { size: 11 } }, grid: { color: COLORS.border } },
+        y: { ticks: { color: COLORS.muted, font: { size: 11 } }, grid: { color: COLORS.border } }
+      }
+    };
+
+    /* ===== R2 COMPARISON ===== */
+    new Chart(document.getElementById('chartR2Compare'), {
+      type: 'bar',
+      data: {
+        labels: ['Arvore Base', 'Arvore Otimizada', 'Random Forest', 'RF Otimizada'],
+        datasets: [
+          { label: 'R² Treino', data: [1.0, 0.871, 0.977, 0.966], backgroundColor: COLORS.accent, borderRadius: 6 },
+          { label: 'R² Teste', data: [0.661, 0.754, 0.825, 0.826], backgroundColor: COLORS.success, borderRadius: 6 }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'R² - Treino vs Teste', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          ...CHART_DEFAULTS.scales,
+          y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 1.1, ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v.toFixed(1) } }
+        }
+      }
+    });
+
+    /* ===== RMSE COMPARISON ===== */
+    new Chart(document.getElementById('chartRMSECompare'), {
+      type: 'bar',
+      data: {
+        labels: ['Arvore Base', 'Arvore Otimizada', 'Random Forest', 'RF Otimizada'],
+        datasets: [
+          { label: 'RMSE Treino', data: [0, 980.42, 411.21, 500.47], backgroundColor: COLORS.accent, borderRadius: 6 },
+          { label: 'RMSE Teste', data: [1544.65, 1315.20, 1108.02, 1106.16], backgroundColor: COLORS.red, borderRadius: 6 }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'RMSE - Treino vs Teste', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        }
+      }
+    });
+
+    /* ===== FEATURE IMPORTANCE ===== */
+    const featureNames = [
+      'material_Pedra', 'material_Marmore', 'material_Madeira', 'material_Bronze',
+      'material_Argila', 'material_N/E', 'localizacao_remota', 'pedido_extra_cliente',
+      'internacional', 'transporte_Rodov.', 'transporte_Aereo', 'transporte_N/E',
+      'fragil', 'data_agend_ano', 'data_entreg_mes', 'data_entreg_ano',
+      'data_agend_mes', 'envio_expresso', 'instalacao_incluida',
+      'data_entreg_dias', 'data_agend_dias', 'diferenca_dias',
+      'peso', 'largura', 'altura',
+      'preco_base_envio', 'reputacao_artista', 'preco_escultura'
+    ];
+    const featureImps = [
+      0.0012, 0.0017, 0.0016, 0.0021,
+      0.0070, 0.0077, 0.0097, 0.0098,
+      0.0068, 0.0030, 0.0023, 0.0014,
+      0.0041, 0.0020, 0.0035, 0.0016,
+      0.0029, 0.0059, 0.0028,
+      0.0114, 0.0112, 0.0123,
+      0.0222, 0.0378, 0.0429,
+      0.1494, 0.2956, 0.3849
+    ];
+
+    new Chart(document.getElementById('chartFeatureImp'), {
+      type: 'bar',
+      data: {
+        labels: featureNames,
+        datasets: [{
+          label: 'Importancia',
+          data: featureImps,
+          backgroundColor: featureImps.map(v => v > 0.1 ? COLORS.accent : v > 0.02 ? COLORS.accentSoft : COLORS.muted),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'Importancia das Features (Decision Tree)', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          x: { ticks: { color: COLORS.muted, callback: v => (v*100).toFixed(0) + '%' }, grid: { color: COLORS.border } },
+          y: { ticks: { color: COLORS.text2, font: { size: 10 } }, grid: { display: false } }
+        }
+      }
+    });
+  </script>
+
+</body>
+</html>

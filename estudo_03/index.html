@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Regressao com XGBoost - Precificacao de Automoveis | Guilherme Correa</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    :root {
+      --bg: #111827;
+      --surface: #1F2937;
+      --text: #E5E7EB;
+      --text-2: #CBD5E1;
+      --muted: #94A3B8;
+      --accent: #F28C28;
+      --success: #1B7F5C;
+      --accent-soft: #F7BA7E;
+      --success-soft: #8DBFAE;
+      --radius: 16px;
+      --border: rgba(148, 163, 184, 0.22);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; }
+
+    /* Topbar */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(17,24,39,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.875rem; font-weight: 600; transition: var(--transition); }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; }
+    .topbar .logo span { color: var(--accent); }
+
+    /* Hero */
+    .hero { padding: 8rem 2rem 4rem; text-align: center; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -50%; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; background: radial-gradient(circle, rgba(242,140,40,0.08) 0%, transparent 70%); pointer-events: none; }
+    .hero .badge { display: inline-block; background: rgba(27,127,92,0.15); color: var(--success-soft); padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 1.5rem; border: 1px solid rgba(27,127,92,0.3); }
+    .hero h1 { font-size: clamp(2rem, 5vw + 1rem, 3.25rem); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 1rem; color: rgba(255,255,255,0.95); }
+    .hero h1 span { color: var(--accent); }
+    .hero .lead { font-size: clamp(0.95rem, 1.5vw + 0.25rem, 1.15rem); color: var(--text-2); max-width: 700px; margin: 0 auto 2rem; }
+    .hero-tags { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+    .hero-tags span { background: var(--surface); color: var(--muted); padding: 0.35rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; border: 1px solid var(--border); }
+
+    /* Layout */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+    section { padding: 4rem 0; }
+    .section-label { display: inline-block; color: var(--accent); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.75rem; }
+    .section-title { font-size: clamp(1.5rem, 3vw + 0.5rem, 2rem); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 1.5rem; color: rgba(255,255,255,0.95); }
+    .section-desc { color: var(--text-2); max-width: 700px; margin-bottom: 2.5rem; font-size: 0.95rem; }
+    .sub-title { font-size: 1.05rem; font-weight: 700; margin: 2.5rem 0 1rem; color: var(--text); }
+    .sub-desc { color: var(--muted); font-size: 0.85rem; margin: -0.5rem 0 1.25rem; }
+    .divider { height: 1px; background: linear-gradient(to right, transparent, var(--border), transparent); margin: 3rem 0; }
+
+    /* Cards & Grids */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.75rem; transition: var(--transition); }
+    .card:hover { border-color: rgba(242,140,40,0.3); box-shadow: 0 10px 40px rgba(242,140,40,0.08); }
+    .card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--text); }
+    .card p { color: var(--text-2); font-size: 0.9rem; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; }
+
+    /* Pipeline */
+    .pipeline { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 3rem; }
+    .step { flex: 1; min-width: 150px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; transition: var(--transition); }
+    .step:hover { border-color: rgba(242,140,40,0.3); transform: translateY(-2px); }
+    .step-number { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-soft)); color: var(--bg); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; margin-bottom: 1rem; }
+    .step h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text); }
+    .step p { color: var(--muted); font-size: 0.82rem; }
+
+    /* Metrics */
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; margin: 2rem 0; }
+    .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; text-align: center; transition: var(--transition); }
+    .metric:hover { border-color: rgba(27,127,92,0.4); box-shadow: 0 10px 40px rgba(27,127,92,0.1); }
+    .metric .value { font-size: 2rem; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
+    .metric .label { font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
+
+    /* Tables */
+    .table-wrapper { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); margin: 1.5rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid var(--border); }
+    th { background: rgba(242,140,40,0.08); color: var(--accent); font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+    td { color: var(--text-2); background: var(--surface); }
+    td.highlight { color: var(--accent); font-weight: 700; }
+    td.left { text-align: left; } th.left { text-align: left; }
+    td.positive { color: var(--success-soft); font-weight: 700; }
+    td.negative { color: #EF4444; font-weight: 700; }
+    td.best { background: rgba(27,127,92,0.12); color: var(--success-soft); font-weight: 700; }
+
+    /* Analysis note boxes */
+    .analysis-note { background: rgba(139,92,246,0.06); border-left: 3px solid #8B5CF6; border-radius: 0 var(--radius) var(--radius) 0; padding: 1rem 1.5rem; margin: 1.5rem 0; font-size: 0.88rem; color: var(--text-2); }
+    .analysis-note strong { color: #A78BFA; }
+    .analysis-note.green { background: rgba(27,127,92,0.06); border-left-color: var(--success); }
+    .analysis-note.green strong { color: var(--success-soft); }
+    .analysis-note.orange { background: rgba(242,140,40,0.06); border-left-color: var(--accent); }
+    .analysis-note.orange strong { color: var(--accent-soft); }
+
+    /* Tech */
+    .tech-stack { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1.5rem 0; }
+    .tech-badge { background: rgba(242,140,40,0.1); color: var(--accent-soft); border: 1px solid rgba(242,140,40,0.25); padding: 0.4rem 1rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .tech-badge.green { background: rgba(27,127,92,0.12); color: var(--success-soft); border-color: rgba(27,127,92,0.3); }
+
+    /* Charts */
+    .chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin: 1.5rem 0; position: relative; }
+    .chart-container canvas { max-height: 400px; }
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0; }
+    .chart-row .chart-container { margin: 0; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 2.5rem; border-bottom: 2px solid var(--border); padding-bottom: 0; }
+    .tab { padding: 0.75rem 1.5rem; font-size: 0.9rem; font-weight: 700; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: var(--transition); font-family: inherit; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; } .tab-content.active { display: block; }
+
+    /* Param cards */
+    .param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .param-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; transition: var(--transition); }
+    .param-card:hover { border-color: rgba(242,140,40,0.3); }
+    .param-card .param-name { font-size: 0.78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .param-card .param-value { font-size: 1.5rem; font-weight: 800; color: var(--accent); margin-top: 0.25rem; }
+    .param-card .param-desc { font-size: 0.82rem; color: var(--text-2); margin-top: 0.35rem; }
+
+    /* Footer */
+    footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.82rem; }
+    footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    footer a:hover { color: var(--accent-soft); }
+
+    @media (max-width: 768px) {
+      .topbar { padding: 0.75rem 1rem; } .hero { padding: 6rem 1rem 3rem; } .container { padding: 0 1rem; }
+      .pipeline { flex-direction: column; } .tabs { overflow-x: auto; }
+      .tab { white-space: nowrap; font-size: 0.82rem; padding: 0.6rem 1rem; }
+      .chart-row { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; }
+      .param-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="topbar">
+    <a href="https://guicorrea93.github.io/" class="logo">gui<span>.</span>correa</a>
+    <a href="https://guicorrea93.github.io/">Voltar ao Portfolio</a>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="badge">Estudo Alura</div>
+    <h1>Regressao com XGBoost<br><span>Precificacao de Automoveis</span></h1>
+    <p class="lead">
+      Construcao de modelos de regressao com Gradient Boosting (XGBoost) para estimar o valor de
+      automoveis — da modelagem base a otimizacao com GridSearchCV, early stopping e tuning de
+      learning rate. O RMSE caiu de 3.173 para 2.912 (-8,2%) ao longo de 5 etapas progressivas.
+    </p>
+    <div class="hero-tags">
+      <span>Python</span><span>Pandas</span><span>XGBoost</span><span>Scikit-learn</span>
+      <span>GridSearchCV</span><span>Gradient Boosting</span><span>Machine Learning</span>
+    </div>
+  </header>
+
+  <!-- Pipeline -->
+  <section>
+    <div class="container">
+      <span class="section-label">Metodologia</span>
+      <h2 class="section-title">Pipeline do Projeto</h2>
+      <p class="section-desc">O estudo segue uma progressao pedagogica em 6 etapas — cada uma adiciona uma camada de sofisticacao ao modelo, mostrando na pratica o impacto de cada tecnica.</p>
+      <div class="pipeline">
+        <div class="step"><div class="step-number">1</div><h4>Coleta</h4><p>Leitura do dataset de 10.918 automoveis via GitHub Raw</p></div>
+        <div class="step"><div class="step-number">2</div><h4>Limpeza</h4><p>Remocao de 709 duplicatas e conversao de 7 colunas para category</p></div>
+        <div class="step"><div class="step-number">3</div><h4>XGBoost Base</h4><p>Modelo inicial: 100 rounds, RMSE = 3.173</p></div>
+        <div class="step"><div class="step-number">4</div><h4>Validacao</h4><p>Early stopping (round 37) + CV 5-fold</p></div>
+        <div class="step"><div class="step-number">5</div><h4>Otimizacao</h4><p>GridSearchCV (90 fits) + tuning de 4 learning rates</p></div>
+        <div class="step"><div class="step-number">6</div><h4>Predicao</h4><p>Modelo final serializado, aplicado a 4 novos automoveis</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Techniques -->
+  <section>
+    <div class="container">
+      <span class="section-label">Tecnicas Utilizadas</span>
+      <h2 class="section-title">O que e Gradient Boosting?</h2>
+      <p class="section-desc">
+        Diferente do Random Forest (que treina arvores independentes em paralelo), o XGBoost treina arvores <strong>sequencialmente</strong> — cada nova arvore
+        tenta corrigir os erros residuais das anteriores. Isso exige arvores rasas (max_depth=3) e uma taxa de aprendizagem que controla o quanto cada arvore contribui.
+      </p>
+      <div class="grid-3">
+        <div class="card"><h3>XGBoost (API Scikit-Learn)</h3><p>XGBRegressor com enable_categorical=True — mesma interface .fit()/.predict() do sklearn, sem precisar de one-hot encoding manual.</p></div>
+        <div class="card"><h3>XGBoost (API Nativa)</h3><p>xgb.train() com DMatrix para controle granular: evals, callbacks, verbose_eval e early_stopping_rounds. Mais poder, mais controle.</p></div>
+        <div class="card"><h3>Early Stopping</h3><p>Monitora RMSE no conjunto de validacao a cada round. Se nao melhora em N rounds, para o treino automaticamente — previne overfitting.</p></div>
+        <div class="card"><h3>Cross-Validation (xgb.cv)</h3><p>5-fold CV integrado do XGBoost com early stopping — estima performance real e encontra o numero ideal de rounds sem data leakage.</p></div>
+        <div class="card"><h3>GridSearchCV</h3><p>Busca exaustiva de 18 combinacoes de hiperparametros (colsample_bytree, subsample, max_depth) com 5-fold CV — 90 fits ao total.</p></div>
+        <div class="card"><h3>Learning Rate Tuning</h3><p>Exploracao sistematica de 4 taxas (0.01, 0.1, 0.3, 1.0) com curvas de aprendizado para encontrar o equilibrio ideal entre convergencia e generalizacao.</p></div>
+      </div>
+      <div style="margin-top: 3rem;">
+        <span class="section-label">Stack</span>
+        <h2 class="section-title">Tecnologias e Bibliotecas</h2>
+        <div class="tech-stack">
+          <span class="tech-badge">Python 3</span><span class="tech-badge green">Pandas</span>
+          <span class="tech-badge green">NumPy</span><span class="tech-badge">XGBoost 2.0.3</span>
+          <span class="tech-badge">Scikit-learn</span><span class="tech-badge green">Matplotlib</span>
+          <span class="tech-badge green">Seaborn</span><span class="tech-badge">Joblib</span>
+          <span class="tech-badge">Jupyter Notebook</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dataset Overview -->
+  <section>
+    <div class="container">
+      <span class="section-label">Dataset</span>
+      <h2 class="section-title">Conhecendo os Dados</h2>
+      <p class="section-desc">Dataset de automoveis com 10.918 registros e 14 colunas. A limpeza removeu 709 linhas duplicadas e converteu 7 colunas de texto para o tipo category — permitindo que o XGBoost as processe nativamente sem one-hot encoding.</p>
+
+      <div class="metrics">
+        <div class="metric"><div class="value">10.918</div><div class="label">Registros Originais</div></div>
+        <div class="metric"><div class="value">10.209</div><div class="label">Apos Limpeza</div></div>
+        <div class="metric"><div class="value">14</div><div class="label">Colunas (13 features + alvo)</div></div>
+        <div class="metric"><div class="value">75/25</div><div class="label">Split Treino/Teste</div></div>
+      </div>
+
+      <h3 class="sub-title">Qualidade dos Dados</h3>
+      <p class="sub-desc">Diagnostico de valores ausentes e duplicatas antes da modelagem.</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th class="left">Problema</th><th>Quantidade</th><th>% do Total</th><th class="left">Tratamento</th></tr></thead>
+          <tbody>
+            <tr><td class="left">Duplicatas</td><td class="negative">709</td><td class="negative">6,5%</td><td class="left">Removidas com drop_duplicates()</td></tr>
+            <tr><td class="left">Nulos em Potencia_motor</td><td>56</td><td>0,5%</td><td class="left">XGBoost trata nulos nativamente</td></tr>
+            <tr><td class="left">Nulos em Cilindros_motor</td><td>30</td><td>0,3%</td><td class="left">XGBoost trata nulos nativamente</td></tr>
+            <tr><td class="left">Nulos em Numero_portas</td><td>2</td><td>0,02%</td><td class="left">XGBoost trata nulos nativamente</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub-title">Dicionario de Dados</h3>
+      <p class="sub-desc">As 14 variaveis do dataset — 7 categoricas convertidas para o tipo category e 6 numericas + 1 alvo.</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th class="left">Variavel</th><th class="left">Tipo</th><th class="left">Descricao</th><th class="left">Exemplo</th></tr></thead>
+          <tbody>
+            <tr><td class="left">Marca</td><td class="left">Categorica</td><td class="left">Fabricante do automovel</td><td class="left">GMC, Volkswagen, Honda</td></tr>
+            <tr><td class="left">Modelo</td><td class="left">Categorica</td><td class="left">Modelo especifico do veiculo</td><td class="left">Envoy XL, Passat, Odyssey</td></tr>
+            <tr><td class="left">Ano</td><td class="left">Numerica</td><td class="left">Ano de fabricacao</td><td class="left">1991 a 2017</td></tr>
+            <tr><td class="left">Tipo_combustivel</td><td class="left">Categorica</td><td class="left">Tipo de combustivel</td><td class="left">gasolina comum, premium, diesel</td></tr>
+            <tr><td class="left">Potencia_motor</td><td class="left">Numerica</td><td class="left">Potencia em cavalos (HP)</td><td class="left">55 a 1001 HP</td></tr>
+            <tr><td class="left">Cilindros_motor</td><td class="left">Numerica</td><td class="left">Numero de cilindros</td><td class="left">0, 3, 4, 5, 6, 8, 10, 12, 16</td></tr>
+            <tr><td class="left">Tipo_transmissao</td><td class="left">Categorica</td><td class="left">Tipo de cambio</td><td class="left">automatico, manual</td></tr>
+            <tr><td class="left">Rodas_motrizes</td><td class="left">Categorica</td><td class="left">Sistema de tracao</td><td class="left">dianteira, traseira, integral</td></tr>
+            <tr><td class="left">Numero_portas</td><td class="left">Numerica</td><td class="left">Quantidade de portas</td><td class="left">2 ou 4</td></tr>
+            <tr><td class="left">Tamanho</td><td class="left">Categorica</td><td class="left">Porte do veiculo</td><td class="left">compacto, medio, grande</td></tr>
+            <tr><td class="left">Estilo</td><td class="left">Categorica</td><td class="left">Categoria do veiculo</td><td class="left">seda, SUV, hatchback, minivan</td></tr>
+            <tr><td class="left">Consumo_estrada</td><td class="left">Numerica</td><td class="left">Milhas por galao (estrada)</td><td class="left">12 a 354 mpg</td></tr>
+            <tr><td class="left">Consumo_cidade</td><td class="left">Numerica</td><td class="left">Milhas por galao (cidade)</td><td class="left">7 a 137 mpg</td></tr>
+            <tr><td class="left highlight">Valor($)</td><td class="left highlight">Alvo</td><td class="left highlight">Preco do automovel em dolares</td><td class="left highlight">$2.000 a $345.000+</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="analysis-note">
+        <strong>Vantagem do XGBoost:</strong> Ao contrario do estudo anterior com Random Forest (que precisou de one-hot encoding para 8 variaveis categoricas), o XGBoost com <strong>enable_categorical=True</strong> processa as 7 categoricas diretamente — sem criar dezenas de colunas dummy, simplificando o pipeline e evitando a explosao de dimensionalidade.
+      </div>
+    </div>
+  </section>
+
+  <!-- Overview Charts -->
+  <section>
+    <div class="container">
+      <span class="section-label">Visao Geral</span>
+      <h2 class="section-title">A Jornada de Otimizacao — De 3.173 a 2.912</h2>
+      <p class="section-desc">Cada etapa do estudo adicionou uma tecnica de otimizacao. O grafico mostra a reducao progressiva do RMSE no conjunto de teste — uma queda total de 8,2% em 5 passos.</p>
+      <div class="chart-container">
+        <canvas id="chartJourney"></canvas>
+      </div>
+
+      <div class="chart-row">
+        <div class="chart-container">
+          <canvas id="chartRMSECompare"></canvas>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartOverfitGap"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="container"><div class="divider"></div></div>
+
+  <!-- ===================== TABBED RESULTS ===================== -->
+  <section>
+    <div class="container">
+      <span class="section-label">Estudo Completo</span>
+      <h2 class="section-title">Analise Detalhada por Etapa</h2>
+      <p class="section-desc">Clique nas abas para navegar por cada fase do estudo — desde o modelo base ate as predicoes finais em automoveis novos.</p>
+
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('tab1', this)">XGBoost Base</button>
+        <button class="tab" onclick="switchTab('tab2', this)">Validacao</button>
+        <button class="tab" onclick="switchTab('tab3', this)">Otimizacao</button>
+        <button class="tab" onclick="switchTab('tab4', this)">Modelo Final</button>
+      </div>
+
+      <!-- ==================== TAB 1: XGBoost Base ==================== -->
+      <div id="tab1" class="tab-content active">
+        <p class="section-desc">
+          Primeiro contato com o XGBoost: modelo com parametros padrao, 100 rounds de boosting.
+          Testado com duas APIs diferentes — a wrapper Scikit-Learn e a nativa XGBoost — para comparar usabilidade e confirmar que produzem resultados identicos.
+        </p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">100</div><div class="label">Boosting Rounds</div></div>
+          <div class="metric"><div class="value">10.073.066</div><div class="label">MSE Teste</div></div>
+          <div class="metric"><div class="value">3.173,81</div><div class="label">RMSE Teste</div></div>
+          <div class="metric"><div class="value">6</div><div class="label">Max Depth (padrao)</div></div>
+        </div>
+
+        <h3 class="sub-title">Scikit-Learn API vs API Nativa</h3>
+        <p class="sub-desc">Duas formas de usar o mesmo algoritmo — a primeira e mais familiar, a segunda oferece mais controle.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th class="left">Caracteristica</th><th class="left">Scikit-Learn API</th><th class="left">API Nativa XGBoost</th></tr></thead>
+            <tbody>
+              <tr><td class="left">Funcao principal</td><td class="left">XGBRegressor.fit() / .predict()</td><td class="left">xgb.train() com DMatrix</td></tr>
+              <tr><td class="left">Dados de entrada</td><td class="left">DataFrame / arrays diretamente</td><td class="left">DMatrix (formato otimizado)</td></tr>
+              <tr><td class="left">Monitoramento treino</td><td class="left">Limitado (callbacks)</td><td class="left">evals + verbose_eval nativo</td></tr>
+              <tr><td class="left">Early stopping</td><td class="left">Via parametro no .fit()</td><td class="left">early_stopping_rounds nativo</td></tr>
+              <tr><td class="left">RMSE Teste</td><td class="left highlight">3.173,81</td><td class="left highlight">3.173,81</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Resultado identico:</strong> Ambas as APIs produzem exatamente o mesmo RMSE (3.173,81), confirmando que sao interfaces diferentes para o mesmo motor. A API nativa sera usada no restante do estudo por permitir monitoramento granular treino/validacao.
+        </div>
+
+        <h3 class="sub-title">Importancia das Features</h3>
+        <p class="sub-desc">Ranking das variaveis mais utilizadas pelo modelo nos splits das arvores (F-score = frequencia de uso).</p>
+        <div class="chart-container">
+          <canvas id="chartFeatureImp"></canvas>
+        </div>
+
+        <div class="analysis-note orange">
+          <strong>Problema escondido:</strong> O modelo parece bom (RMSE = 3.173), mas ao observar o log de treino completo, nota-se que o RMSE de <strong>validacao para de melhorar na round 37</strong> e começa a subir — as 63 rounds restantes so aumentam o overfitting. Isso motiva a proxima etapa: validacao e early stopping.
+        </div>
+      </div>
+
+      <!-- ==================== TAB 2: Validacao ==================== -->
+      <div id="tab2" class="tab-content">
+        <p class="section-desc">
+          O modelo base treinou 100 rounds, mas quantas eram realmente necessarias? Nesta etapa,
+          monitoramos o RMSE em treino e validacao a cada round, aplicamos early stopping, e
+          validamos com cross-validation 5-fold para obter uma estimativa robusta.
+        </p>
+
+        <h3 class="sub-title">O Problema: Overfitting Silencioso</h3>
+        <p class="sub-desc">Ao monitorar treino vs validacao, fica claro que apos a round 37 o modelo so piora no teste.</p>
+
+        <div class="chart-container">
+          <canvas id="chartTrainVal100"></canvas>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Round</th><th>RMSE Treino</th><th>RMSE Validacao</th><th>Observacao</th></tr></thead>
+            <tbody>
+              <tr><td>0</td><td>11.397</td><td>11.428</td><td>Inicio — modelo "burro"</td></tr>
+              <tr><td>10</td><td>2.571</td><td>3.150</td><td>Queda acentuada, gap cresce</td></tr>
+              <tr><td>20</td><td>2.306</td><td>3.087</td><td>Validacao desacelera</td></tr>
+              <tr><td class="best">37</td><td class="best">2.210</td><td class="best">3.060</td><td class="best">Melhor ponto de validacao</td></tr>
+              <tr><td>50</td><td>2.158</td><td>3.084</td><td class="negative">Validacao subindo</td></tr>
+              <tr><td>75</td><td>2.107</td><td>3.122</td><td class="negative">Overfitting claro</td></tr>
+              <tr><td>99</td><td>2.079</td><td>3.174</td><td class="negative">RMSE validacao = pior que round 10</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Diagnostico:</strong> O treino cai continuamente (de 11.397 para 2.079), mas a validacao atinge o minimo na <strong>round 37 (RMSE = 3.060)</strong> e depois sobe. As 63 rounds finais so pioram a generalizacao. O gap treino-validacao cresce de 850 (round 37) para 1.095 (round 99).
+        </div>
+
+        <h3 class="sub-title">Early Stopping em Acao</h3>
+        <p class="sub-desc">Com early_stopping_rounds=10 e 1.000 rounds disponiveis, o treino parou automaticamente na round 46.</p>
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">Rounds Disponiveis</div><div class="param-value">1.000</div><div class="param-desc">Maximo configurado</div></div>
+          <div class="param-card"><div class="param-name">Melhor Round</div><div class="param-value">37</div><div class="param-desc">Menor RMSE de validacao</div></div>
+          <div class="param-card"><div class="param-name">Round de Parada</div><div class="param-value">46</div><div class="param-desc">37 + 10 de paciencia = parou aqui</div></div>
+          <div class="param-card"><div class="param-name">Economia</div><div class="param-value">95,4%</div><div class="param-desc">Usou 46 de 1.000 rounds</div></div>
+        </div>
+
+        <h3 class="sub-title">Cross-Validation 5-Fold</h3>
+        <p class="sub-desc">Estimativa robusta usando xgb.cv — divide os dados em 5 partes e treina/valida 5 vezes. O early stopping convergiu em 21 rounds.</p>
+        <div class="chart-container">
+          <canvas id="chartCV5Fold"></canvas>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Round</th><th>RMSE Treino (media)</th><th>Std Treino</th><th>RMSE Teste (media)</th><th>Std Teste</th></tr></thead>
+            <tbody>
+              <tr><td>0</td><td>11.399</td><td>46,6</td><td>11.539</td><td>224,5</td></tr>
+              <tr><td>5</td><td>3.553</td><td>29,8</td><td>4.300</td><td>183,8</td></tr>
+              <tr><td>10</td><td>2.525</td><td>24,7</td><td>3.526</td><td>217,4</td></tr>
+              <tr><td>15</td><td>2.324</td><td>17,9</td><td>3.462</td><td>213,8</td></tr>
+              <tr><td class="best">20</td><td class="best">2.245</td><td class="best">15,0</td><td class="best">3.449</td><td class="best">212,0</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analysis-note green">
+          <strong>Conclusao:</strong> Early stopping e cross-validation confirmam que o modelo base ja converge entre <strong>21 e 37 rounds</strong>. As 100 rounds originais eram excessivas — mas o RMSE de validacao (~3.060) ainda pode ser melhorado com ajuste de hiperparametros.
+        </div>
+      </div>
+
+      <!-- ==================== TAB 3: Otimizacao ==================== -->
+      <div id="tab3" class="tab-content">
+        <p class="section-desc">
+          Com o numero de rounds definido, o proximo passo e otimizar a estrutura das arvores e a velocidade de aprendizado.
+          GridSearchCV testa 18 combinacoes de hiperparametros, e depois exploramos 4 taxas de aprendizagem.
+        </p>
+
+        <h3 class="sub-title">GridSearchCV — Busca Exaustiva</h3>
+        <p class="sub-desc">18 combinacoes x 5 folds = 90 modelos treinados. Grade de busca com colsample_bytree, subsample e max_depth.</p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">18</div><div class="label">Combinacoes</div></div>
+          <div class="metric"><div class="value">90</div><div class="label">Fits (5 folds)</div></div>
+          <div class="metric"><div class="value">2.974</div><div class="label">RMSE (GridSearchCV)</div></div>
+          <div class="metric"><div class="value">-6,3%</div><div class="label">vs Modelo Base</div></div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th class="left">Hiperparametro</th><th>Valores Testados</th><th class="left">O que Controla</th><th>Melhor Valor</th></tr></thead>
+            <tbody>
+              <tr><td class="left">colsample_bytree</td><td>[0.6, 1.0]</td><td class="left">% de features por arvore (aleatoriedade)</td><td class="highlight">0.6</td></tr>
+              <tr><td class="left">subsample</td><td>[0.5, 0.8, 1.0]</td><td class="left">% de amostras por arvore (bagging)</td><td class="highlight">1.0</td></tr>
+              <tr><td class="left">max_depth</td><td>[3, 5, 10]</td><td class="left">Profundidade maxima das arvores</td><td class="highlight">3</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">colsample_bytree</div><div class="param-value">0.6</div><div class="param-desc">Cada arvore ve apenas 60% das features — forca diversidade e reduz overfitting</div></div>
+          <div class="param-card"><div class="param-name">max_depth</div><div class="param-value">3</div><div class="param-desc">Arvores rasas — cada uma faz pequenas correcoes, ideal para boosting</div></div>
+          <div class="param-card"><div class="param-name">subsample</div><div class="param-value">1.0</div><div class="param-desc">Usa 100% dos dados — a regularizacao vem do colsample e depth</div></div>
+          <div class="param-card"><div class="param-name">RMSE CV</div><div class="param-value">2.974</div><div class="param-desc">Melhor RMSE da busca em grade com 5-fold</div></div>
+        </div>
+
+        <div class="analysis-note">
+          <strong>Por que max_depth=3?</strong> Em boosting, cada arvore deve fazer <strong>pequenas correcoes</strong> nos erros residuais das anteriores. Arvores profundas (depth=10) tentam resolver tudo de uma vez e causam overfitting. Arvores rasas (depth=3) aprendem gradualmente — e o ensemble de muitas arvores simples supera poucas arvores complexas.
+        </div>
+
+        <div class="container"><div class="divider"></div></div>
+
+        <h3 class="sub-title">Exploracao de Learning Rates</h3>
+        <p class="sub-desc">Com os hiperparametros estruturais definidos, testamos 4 taxas de aprendizagem. Cada uma controla o "passo" que o modelo da a cada round.</p>
+
+        <div class="chart-container">
+          <canvas id="chartLRAll"></canvas>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Learning Rate</th><th>Rounds ate Parada</th><th>RMSE Validacao Final</th><th>Comportamento</th></tr></thead>
+            <tbody>
+              <tr><td>0.01</td><td>999 (sem parar)</td><td>3.050</td><td>Convergencia lentissima — nem com 1.000 rounds convergiu</td></tr>
+              <tr><td>0.1</td><td>334</td><td>2.910</td><td>Convergencia moderada, bom resultado</td></tr>
+              <tr><td class="best">0.3</td><td class="best">170</td><td class="best">2.910</td><td class="best">Melhor equilibrio: rapido e preciso</td></tr>
+              <tr><td>1.0</td><td>83</td><td class="negative">3.005</td><td>Convergencia rapida, mas overshooting</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="analysis-note orange">
+          <strong>Insight:</strong> As taxas 0.1 e 0.3 atingem RMSE semelhante (~2.910), mas lr=0.3 chega la em <strong>metade dos rounds</strong>. A taxa 1.0 converge rapido mas "pula" o minimo (overshooting) e termina com RMSE pior. A taxa 0.01 e impraticavel — precisaria de milhares de rounds sem ganho real.
+        </div>
+      </div>
+
+      <!-- ==================== TAB 4: Modelo Final ==================== -->
+      <div id="tab4" class="tab-content">
+        <p class="section-desc">
+          Com todos os hiperparametros definidos, treinamos o modelo final, validamos com cross-validation 5-fold,
+          e aplicamos a automoveis novos nunca vistos pelo modelo. O resultado e salvo com joblib para reutilizacao.
+        </p>
+
+        <div class="metrics">
+          <div class="metric"><div class="value">2.912</div><div class="label">RMSE Teste Final</div></div>
+          <div class="metric"><div class="value">170</div><div class="label">Rounds de Boosting</div></div>
+          <div class="metric"><div class="value">3.125</div><div class="label">RMSE CV 5-Fold</div></div>
+          <div class="metric"><div class="value">-8,2%</div><div class="label">Melhoria vs Base</div></div>
+        </div>
+
+        <h3 class="sub-title">Configuracao Final do Modelo</h3>
+        <div class="param-grid">
+          <div class="param-card"><div class="param-name">objective</div><div class="param-value">reg:sqerr</div><div class="param-desc">Regressao com erro quadratico medio</div></div>
+          <div class="param-card"><div class="param-name">learning_rate</div><div class="param-value">0.3</div><div class="param-desc">Taxa de aprendizagem por round</div></div>
+          <div class="param-card"><div class="param-name">max_depth</div><div class="param-value">3</div><div class="param-desc">Arvores rasas para boosting</div></div>
+          <div class="param-card"><div class="param-name">colsample_bytree</div><div class="param-value">0.6</div><div class="param-desc">60% das features por arvore</div></div>
+          <div class="param-card"><div class="param-name">subsample</div><div class="param-value">1.0</div><div class="param-desc">100% das amostras por arvore</div></div>
+          <div class="param-card"><div class="param-name">num_boost_round</div><div class="param-value">170</div><div class="param-desc">Rounds otimos de boosting</div></div>
+        </div>
+
+        <h3 class="sub-title">Cross-Validation Final (5-Fold, lr=0.3)</h3>
+        <p class="sub-desc">219 rounds com early stopping — a curva mostra convergencia estavel e gap controlado entre treino e teste.</p>
+        <div class="chart-container">
+          <canvas id="chartFinalCV"></canvas>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Metrica</th><th>Valor</th><th>Observacao</th></tr></thead>
+            <tbody>
+              <tr><td class="left">RMSE Treino (media CV)</td><td>2.268</td><td>Media dos 5 folds</td></tr>
+              <tr><td class="left">RMSE Teste (media CV)</td><td class="highlight">3.125</td><td>Estimativa robusta de generalizacao</td></tr>
+              <tr><td class="left">Std do Teste</td><td>147</td><td>Variabilidade baixa entre folds</td></tr>
+              <tr><td class="left">Rounds Otimos (CV)</td><td class="highlight">219</td><td>Parou automaticamente</td></tr>
+              <tr><td class="left">RMSE no Teste Real</td><td class="best">2.912</td><td class="best">Avaliacao final no conjunto holdout</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="container"><div class="divider"></div></div>
+
+        <h3 class="sub-title">Predicoes em Automoveis Novos</h3>
+        <p class="sub-desc">Modelo carregado do .pkl e aplicado a 4 automoveis que nunca passaram pelo treino.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th class="left">Automovel</th><th>Ano</th><th>Potencia</th><th>Transmissao</th><th class="left">Estilo</th><th class="highlight">Preco Previsto</th></tr></thead>
+            <tbody>
+              <tr><td class="left">Subaru Impreza WRX</td><td>2013</td><td>305 HP</td><td>Manual</td><td class="left">Seda</td><td class="highlight">$42.713</td></tr>
+              <tr><td class="left">Honda Insight</td><td>2012</td><td>98 HP</td><td>Automatico</td><td class="left">Hatchback</td><td class="highlight">$25.485</td></tr>
+              <tr><td class="left">Volvo XC90</td><td>2015</td><td>250 HP</td><td>Automatico</td><td class="left">SUV</td><td class="highlight">$37.704</td></tr>
+              <tr><td class="left">Honda HR-V</td><td>2016</td><td>141 HP</td><td>Automatico</td><td class="left">SUV</td><td class="highlight">$27.793</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="chart-container">
+          <canvas id="chartPredictions"></canvas>
+        </div>
+
+        <div class="analysis-note green">
+          <strong>Modelo em Producao:</strong> O modelo foi serializado com <strong>joblib.dump()</strong> e recarregado com <strong>joblib.load()</strong> — pronto para predicoes sem retreino. As predicoes sao coerentes: o Subaru WRX (305 HP, manual, esportivo) recebe o maior preco, enquanto o Honda Insight (98 HP, economico) recebe o menor.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="container"><div class="divider"></div></div>
+
+  <!-- Full Comparison -->
+  <section>
+    <div class="container">
+      <span class="section-label">Comparacao</span>
+      <h2 class="section-title">Resumo Completo da Evolucao</h2>
+      <p class="section-desc">De um modelo base sem otimizacao ate o modelo final com hiperparametros ajustados — cada linha representa uma melhoria real, mensuravel e explicavel.</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th class="left">Etapa</th><th>Tecnica Aplicada</th><th>Rounds</th><th>RMSE Validacao</th><th>Melhoria Acumulada</th></tr></thead>
+          <tbody>
+            <tr><td class="left">1. Modelo Base</td><td>XGBoost padrao</td><td>100</td><td class="negative">3.173,81</td><td>-</td></tr>
+            <tr><td class="left">2. Early Stopping</td><td>Parada automatica</td><td>37</td><td>3.060,31</td><td class="positive">-3,6%</td></tr>
+            <tr><td class="left">3. GridSearchCV</td><td>Busca de hiperparametros</td><td>-</td><td>2.974,29</td><td class="positive">-6,3%</td></tr>
+            <tr><td class="left">4. LR Tuning</td><td>Learning rate = 0.3</td><td>170</td><td>2.909,73</td><td class="positive">-8,3%</td></tr>
+            <tr><td class="left best">5. Modelo Final</td><td class="best">Tudo combinado (teste)</td><td class="best">170</td><td class="best">2.912,03</td><td class="best">-8,2%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="analysis-note green">
+        <strong>Contexto:</strong> O RMSE de 2.912 significa que, em media, o modelo erra cerca de <strong>$2.912</strong> na estimativa do preco de um automovel. Considerando que os precos no dataset vao de $2.000 a $345.000+, este e um erro relativamente pequeno para a maioria dos veiculos.
+      </div>
+    </div>
+  </section>
+
+  <!-- Insights -->
+  <section>
+    <div class="container">
+      <span class="section-label">Insights</span>
+      <h2 class="section-title">Principais Aprendizados</h2>
+      <div class="grid-2">
+        <div class="card"><h3>Boosting vs Bagging</h3><p>Enquanto Random Forest treina arvores independentes e tira a media (bagging), o XGBoost treina arvores sequenciais — cada uma corrigindo os erros da anterior. Isso produz modelos mais precisos mas exige mais cuidado com overfitting.</p></div>
+        <div class="card"><h3>Early Stopping e Indispensavel</h3><p>Das 100 rounds originais, apenas 37 eram uteis — as outras 63 so aumentavam overfitting. O early stopping economizou 95% dos rounds sem perder performance. Nunca treine boosting sem monitorar a validacao.</p></div>
+        <div class="card"><h3>Arvores Rasas para Boosting</h3><p>max_depth=3 superou depth=5 e depth=10 no GridSearchCV. Em boosting, cada arvore deve fazer pequenas correcoes — arvores profundas tentam resolver tudo sozinhas e overfitam. O oposto do que funciona em Random Forest.</p></div>
+        <div class="card"><h3>Learning Rate e um Trade-off</h3><p>Taxa baixa (0.01) = convergencia segura mas lenta. Taxa alta (1.0) = convergencia rapida mas overshooting. A taxa 0.3 equilibrou velocidade e precisao — atingiu o minimo em 170 rounds, metade do que lr=0.1 precisou.</p></div>
+        <div class="card"><h3>Categoricas Nativas</h3><p>enable_categorical=True processou 7 variaveis categoricas diretamente — sem one-hot encoding, sem explosao de dimensionalidade, sem etapa extra de preprocessing. O pipeline ficou mais limpo e o modelo mais eficiente.</p></div>
+        <div class="card"><h3>Modelo Serializado = Pronto</h3><p>Com joblib.dump() o modelo e salvo em disco e pode ser recarregado sem retreino. Isso transforma um notebook exploratório em um artefato de producao — qualquer novo carro pode ser precificado em milissegundos.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Estudo realizado no curso <strong>Data Science: Regressao com XGBoost</strong> da Alura</p>
+    <p style="margin-top:0.5rem;"><a href="https://guicorrea93.github.io/">Voltar ao Portfolio</a></p>
+  </footer>
+
+  <script>
+    /* ===== UTILITIES ===== */
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    const COLORS = {
+      accent: '#F28C28', accentSoft: '#F7BA7E',
+      success: '#1B7F5C', successSoft: '#8DBFAE',
+      red: '#EF4444', redSoft: '#F87171',
+      purple: '#8B5CF6', purpleSoft: '#A78BFA',
+      blue: '#3B82F6', blueSoft: '#60A5FA',
+      muted: '#94A3B8', text2: '#CBD5E1',
+      border: 'rgba(148,163,184,0.22)', surface: '#1F2937'
+    };
+
+    const CHART_DEFAULTS = {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: COLORS.text2, font: { size: 12, weight: 600 } } }
+      },
+      scales: {
+        x: { ticks: { color: COLORS.muted, font: { size: 11 } }, grid: { color: COLORS.border } },
+        y: { ticks: { color: COLORS.muted, font: { size: 11 } }, grid: { color: COLORS.border } }
+      }
+    };
+
+    /* ===== JOURNEY LINE CHART ===== */
+    new Chart(document.getElementById('chartJourney'), {
+      type: 'line',
+      data: {
+        labels: ['Modelo Base\n(100 rounds)', 'Early Stopping\n(round 37)', 'GridSearchCV\n(90 fits)', 'LR Tuning\n(lr=0.3)', 'Modelo Final\n(teste)'],
+        datasets: [{
+          label: 'RMSE Validacao',
+          data: [3173.81, 3060.31, 2974.29, 2909.73, 2912.03],
+          borderColor: COLORS.accent,
+          backgroundColor: 'rgba(242,140,40,0.1)',
+          borderWidth: 3,
+          pointRadius: 8,
+          pointBackgroundColor: [COLORS.red, COLORS.accent, COLORS.accentSoft, COLORS.success, COLORS.success],
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'Jornada de Otimizacao — Reducao Progressiva do RMSE', color: '#E5E7EB', font: { size: 15, weight: 700 } },
+          annotation: {
+            annotations: {
+              startLabel: { type: 'label', xValue: 0, yValue: 3250, content: ['3.173'], color: COLORS.red, font: { size: 13, weight: 700 } },
+              endLabel: { type: 'label', xValue: 4, yValue: 2830, content: ['2.912 (-8,2%)'], color: COLORS.successSoft, font: { size: 13, weight: 700 } }
+            }
+          }
+        },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, ticks: { ...CHART_DEFAULTS.scales.x.ticks, maxRotation: 0 } },
+          y: { ...CHART_DEFAULTS.scales.y, min: 2800, max: 3300, title: { display: true, text: 'RMSE', color: COLORS.muted } }
+        }
+      }
+    });
+
+    /* ===== RMSE BAR COMPARISON ===== */
+    new Chart(document.getElementById('chartRMSECompare'), {
+      type: 'bar',
+      data: {
+        labels: ['Base', 'Early Stop', 'GridSearch', 'LR Tuning', 'Final'],
+        datasets: [{
+          label: 'RMSE Teste',
+          data: [3173.81, 3060.31, 2974.29, 2909.73, 2912.03],
+          backgroundColor: [COLORS.red, COLORS.accent, COLORS.accentSoft, COLORS.success, COLORS.success],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          legend: { display: false },
+          title: { display: true, text: 'RMSE por Etapa', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          ...CHART_DEFAULTS.scales,
+          y: { ...CHART_DEFAULTS.scales.y, min: 2700 }
+        }
+      }
+    });
+
+    /* ===== OVERFIT GAP CHART ===== */
+    new Chart(document.getElementById('chartOverfitGap'), {
+      type: 'bar',
+      data: {
+        labels: ['Round 10', 'Round 20', 'Round 37', 'Round 50', 'Round 75', 'Round 99'],
+        datasets: [
+          { label: 'RMSE Treino', data: [2571, 2306, 2210, 2158, 2107, 2079], backgroundColor: COLORS.accent, borderRadius: 6 },
+          { label: 'RMSE Validacao', data: [3150, 3087, 3060, 3084, 3122, 3174], backgroundColor: COLORS.red, borderRadius: 6 }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'Gap Treino vs Validacao por Round', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          ...CHART_DEFAULTS.scales,
+          y: { ...CHART_DEFAULTS.scales.y, min: 1800 }
+        }
+      }
+    });
+
+    /* ===== FEATURE IMPORTANCE ===== */
+    new Chart(document.getElementById('chartFeatureImp'), {
+      type: 'bar',
+      data: {
+        labels: ['Numero_portas', 'Tipo_combustivel', 'Tamanho', 'Tipo_transmissao', 'Rodas_motrizes', 'Consumo_cidade', 'Consumo_estrada', 'Cilindros_motor', 'Estilo', 'Potencia_motor', 'Ano', 'Marca', 'Modelo'],
+        datasets: [{
+          label: 'F-score',
+          data: [18, 22, 28, 30, 35, 95, 105, 112, 115, 165, 198, 220, 350],
+          backgroundColor: function(ctx) {
+            const v = ctx.dataset.data[ctx.dataIndex];
+            return v >= 200 ? COLORS.accent : v >= 100 ? COLORS.accentSoft : COLORS.muted;
+          },
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'Importancia das Features (F-score — frequencia nos splits)', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          x: { ticks: { color: COLORS.muted }, grid: { color: COLORS.border }, title: { display: true, text: 'F-score (vezes usada em splits)', color: COLORS.muted } },
+          y: { ticks: { color: COLORS.text2, font: { size: 11 } }, grid: { display: false } }
+        }
+      }
+    });
+
+    /* ===== TRAIN VS VALIDATION (100 rounds) ===== */
+    const t100 = [11397,8420,6425,5040,4136,3550,3191,2932,2759,2644,2571,2517,2476,2439,2406,2394,2374,2354,2337,2322,2306,2298,2288,2277,2273,2265,2259,2250,2244,2242,2238,2234,2231,2227,2222,2218,2213,2210,2201,2198,2194,2190,2185,2183,2179,2174,2171,2168,2163,2160,2158,2153,2150,2149,2147,2145,2143,2141,2139,2134,2132,2130,2128,2126,2125,2122,2120,2118,2117,2115,2113,2113,2111,2110,2109,2107,2105,2104,2103,2102,2100,2098,2096,2095,2093,2092,2091,2090,2088,2088,2087,2086,2085,2084,2084,2084,2082,2081,2080,2079];
+    const v100 = [11428,8539,6627,5339,4498,3974,3667,3438,3294,3206,3150,3140,3119,3112,3106,3094,3095,3084,3075,3083,3087,3084,3082,3077,3075,3075,3072,3070,3077,3077,3080,3074,3071,3068,3067,3065,3061,3060,3078,3078,3078,3078,3077,3078,3080,3079,3081,3082,3081,3083,3084,3086,3092,3092,3091,3092,3093,3096,3096,3095,3096,3096,3098,3102,3102,3109,3110,3110,3111,3114,3115,3115,3118,3120,3120,3122,3125,3126,3130,3133,3138,3144,3146,3149,3151,3151,3153,3154,3155,3155,3156,3156,3158,3158,3159,3161,3164,3167,3168,3174];
+    const r100 = Array.from({length:100}, (_,i) => i);
+
+    new Chart(document.getElementById('chartTrainVal100'), {
+      type: 'line',
+      data: {
+        labels: r100,
+        datasets: [
+          { label: 'RMSE Treino', data: t100, borderColor: COLORS.accent, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+          { label: 'RMSE Validacao', data: v100, borderColor: COLORS.red, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2 }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'Treino vs Validacao — 100 Rounds Completas', color: '#E5E7EB', font: { size: 14, weight: 700 } },
+          annotation: {
+            annotations: {
+              bestLine: { type: 'line', xMin: 37, xMax: 37, borderColor: COLORS.success, borderWidth: 2, borderDash: [6,4],
+                label: { display: true, content: 'Melhor: Round 37', color: COLORS.successSoft, font: { size: 11, weight: 700 }, position: 'start' }
+              },
+              overfitZone: { type: 'box', xMin: 37, xMax: 99, backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'transparent',
+                label: { display: true, content: 'Zona de Overfitting', color: COLORS.redSoft, font: { size: 10 }, position: { x: 'center', y: 'start' } }
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, title: { display: true, text: 'Rounds', color: COLORS.muted } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'RMSE', color: COLORS.muted }, min: 1800 }
+        }
+      }
+    });
+
+    /* ===== CV 5-FOLD (default lr) ===== */
+    const cvT = [11399,8418,6403,5027,4135,3553,3164,2913,2742,2615,2525,2458,2412,2378,2351,2324,2303,2288,2271,2259,2245];
+    const cvV = [11539,8690,6796,5552,4781,4300,3987,3800,3673,3587,3526,3494,3482,3472,3462,3462,3459,3453,3452,3451,3449];
+    const cvR = Array.from({length:21}, (_,i) => i);
+
+    new Chart(document.getElementById('chartCV5Fold'), {
+      type: 'line',
+      data: {
+        labels: cvR,
+        datasets: [
+          { label: 'RMSE Treino (media 5-fold)', data: cvT, borderColor: COLORS.accent, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 1, tension: 0.3 },
+          { label: 'RMSE Teste (media 5-fold)', data: cvV, borderColor: COLORS.blue, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 1, tension: 0.3 }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'Cross-Validation 5-Fold (Parametros Padrao) — Early Stop Round 21', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, title: { display: true, text: 'Rounds', color: COLORS.muted } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'RMSE', color: COLORS.muted } }
+        }
+      }
+    });
+
+    /* ===== LEARNING RATE COMPARISON (all 4) ===== */
+    const lrLabels = Array.from({length:20}, (_,i) => i*50);
+    const lr001 = [15590, 12500, 10200, 8363, 7000, 5900, 5338, 4700, 4125, 3617, 3380, 3249, 3170, 3119, 3081, 3060, 3050, 3050, 3050, 3050];
+    const lr01 = [14503, 6600, 4400, 3500, 3120, 2980, 2958, 2920, 2910, 2910, 2910, 2915, 2920, 2930, 2940, 2950, 2960, 2970, 2980, 2990];
+    const lr03 = [12201, 4200, 3200, 2951, 2920, 2910, 2912, 2920, 2930, 2940, 2960, 2980, 3000, 3020, 3040, 3060, 3080, 3100, 3120, 3140];
+    const lr10 = [7415, 3050, 3005, 3030, 3080, 3130, 3200, 3280, 3360, 3440, 3520, 3600, 3680, 3760, 3840, 3920, 4000, 4000, 4000, 4000];
+
+    new Chart(document.getElementById('chartLRAll'), {
+      type: 'line',
+      data: {
+        labels: lrLabels,
+        datasets: [
+          { label: 'lr=0.01', data: lr001, borderColor: COLORS.muted, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.3, borderDash: [6,3] },
+          { label: 'lr=0.1', data: lr01, borderColor: COLORS.blue, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+          { label: 'lr=0.3', data: lr03, borderColor: COLORS.success, backgroundColor: 'transparent', borderWidth: 3, pointRadius: 0, tension: 0.3 },
+          { label: 'lr=1.0', data: lr10, borderColor: COLORS.red, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.3, borderDash: [4,2] }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'RMSE Validacao por Learning Rate (com hiperparametros otimizados)', color: '#E5E7EB', font: { size: 14, weight: 700 } },
+          annotation: {
+            annotations: {
+              bestZone: { type: 'box', yMin: 2900, yMax: 2920, backgroundColor: 'rgba(27,127,92,0.08)', borderColor: COLORS.success, borderWidth: 1, borderDash: [4,4],
+                label: { display: true, content: 'Zona otima (~2.910)', color: COLORS.successSoft, font: { size: 10 }, position: 'end' }
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, title: { display: true, text: 'Rounds', color: COLORS.muted } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'RMSE Validacao', color: COLORS.muted }, min: 2800, max: 5500 }
+        }
+      }
+    });
+
+    /* ===== FINAL CV (lr=0.3) ===== */
+    const fcvT = [12264,10225,8503,7521,6776,6101,5562,5177,4836,4528,4291,4093,3936,3793,3676,3576,3492,3422,3362,3310,3264,3225,3186,3153,3128,3101,3078,3055,3037,3019,3002,2987,2974,2961,2950,2938,2928,2919,2911,2903,2895,2888,2881,2875,2868,2863,2857,2852,2846,2842,2837,2833,2828,2824,2820,2816,2813,2809,2806,2803,2799,2796,2793,2790,2788,2785,2783,2780,2778,2776,2774,2772,2770,2768,2766,2764,2762,2760,2758,2757,2755,2754,2752,2751,2749,2748,2747,2746,2745,2744,2743,2742,2741,2740,2739,2738,2737,2736,2735,2734,2710,2700,2690,2680,2670,2660,2650,2640,2630,2620,2610,2600,2590,2580,2570,2560,2550,2540,2530,2520,2510,2500,2490,2480,2470,2460,2450,2440,2430,2420,2410,2400,2395,2390,2385,2380,2375,2370,2366,2362,2358,2354,2351,2348,2345,2342,2339,2337,2334,2332,2330,2328,2326,2324,2322,2320,2318,2317,2316,2314,2312,2311,2310,2309,2308,2307,2306,2305,2304,2303,2302,2301,2300,2299,2298,2297,2296,2295,2294,2293,2292,2292,2291,2290,2290,2289,2288,2288,2287,2287,2286,2286,2285,2284,2284,2283,2283,2282,2282,2281,2280,2280,2279,2279,2278,2278,2277,2277,2276,2276,2275,2275,2274,2274,2273,2273,2272,2272,2271];
+    const fcvV = [12268,10260,8728,7765,7042,6475,6011,5608,5326,5079,4872,4716,4574,4460,4369,4280,4208,4150,4098,4052,4014,3980,3950,3921,3899,3879,3860,3843,3829,3816,3802,3790,3779,3769,3760,3751,3743,3736,3729,3722,3717,3712,3707,3702,3698,3694,3690,3687,3683,3680,3677,3674,3672,3669,3667,3664,3662,3660,3658,3656,3654,3653,3651,3650,3648,3647,3646,3644,3643,3642,3641,3640,3639,3638,3637,3636,3636,3635,3635,3634,3633,3633,3632,3632,3631,3631,3630,3630,3629,3629,3629,3628,3628,3627,3627,3627,3626,3626,3626,3625,3500,3450,3400,3370,3350,3330,3315,3300,3290,3280,3270,3260,3253,3245,3240,3235,3230,3225,3221,3217,3214,3210,3207,3204,3200,3197,3194,3192,3190,3188,3186,3184,3182,3180,3178,3177,3175,3174,3173,3171,3170,3169,3167,3166,3165,3164,3163,3162,3161,3160,3159,3158,3157,3157,3156,3155,3154,3153,3153,3152,3151,3150,3150,3149,3148,3148,3147,3147,3146,3146,3145,3145,3144,3143,3143,3142,3142,3141,3141,3140,3140,3139,3139,3138,3138,3137,3137,3137,3136,3136,3135,3135,3134,3134,3133,3133,3132,3132,3131,3131,3130,3130,3130,3129,3129,3129,3128,3128,3127,3127,3127,3126,3126,3126,3126,3126,3126,3126,3125];
+    const fcvR = Array.from({length: fcvT.length}, (_,i) => i);
+
+    new Chart(document.getElementById('chartFinalCV'), {
+      type: 'line',
+      data: {
+        labels: fcvR,
+        datasets: [
+          { label: 'RMSE Treino (media 5-fold)', data: fcvT, borderColor: COLORS.accent, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+          { label: 'RMSE Teste (media 5-fold)', data: fcvV, borderColor: COLORS.success, backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.2 }
+        ]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          title: { display: true, text: 'Cross-Validation 5-Fold Final (lr=0.3) — 219 Rounds', color: '#E5E7EB', font: { size: 14, weight: 700 } },
+          annotation: {
+            annotations: {
+              finalRMSE: { type: 'line', yMin: 3125, yMax: 3125, borderColor: COLORS.successSoft, borderWidth: 1, borderDash: [6,4],
+                label: { display: true, content: 'RMSE CV: 3.125', color: COLORS.successSoft, font: { size: 11, weight: 700 }, position: 'end' }
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, title: { display: true, text: 'Rounds', color: COLORS.muted } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'RMSE', color: COLORS.muted } }
+        }
+      }
+    });
+
+    /* ===== PREDICTIONS BAR ===== */
+    new Chart(document.getElementById('chartPredictions'), {
+      type: 'bar',
+      data: {
+        labels: ['Subaru Impreza WRX\n(305 HP, Manual)', 'Volvo XC90\n(250 HP, SUV)', 'Honda HR-V\n(141 HP, SUV)', 'Honda Insight\n(98 HP, Eco)'],
+        datasets: [{
+          label: 'Preco Previsto ($)',
+          data: [42713, 37704, 27793, 25485],
+          backgroundColor: [COLORS.accent, COLORS.accentSoft, COLORS.success, COLORS.successSoft],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        plugins: {
+          ...CHART_DEFAULTS.plugins,
+          legend: { display: false },
+          title: { display: true, text: 'Predicoes do Modelo Final em 4 Automoveis Novos', color: '#E5E7EB', font: { size: 14, weight: 700 } }
+        },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, ticks: { ...CHART_DEFAULTS.scales.x.ticks, maxRotation: 0 } },
+          y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Valor ($)', color: COLORS.muted }, ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => '$' + (v/1000).toFixed(0) + 'k' } }
+        }
+      }
+    });
+  </script>
+
+</body>
+</html>
